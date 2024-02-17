@@ -3,6 +3,13 @@ title: Getting started
 slug: /
 ---
 
+<!--
+SPDX-FileCopyrightText: 2016 Mathieu Stefani
+SPDX-FileCopyrightText: 2021 Andrea Pappacoda
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 Pistache is a web framework written in Modern C++ that focuses on performance and provides an elegant and asynchronous API.
 
 ```cpp

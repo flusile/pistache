@@ -2,6 +2,13 @@
 title: Asynchronous HTTP programming
 ---
 
+<!--
+SPDX-FileCopyrightText: 2016 Mathieu Stefani
+SPDX-FileCopyrightText: 2021 Andrea Pappacoda
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 Interfaces provided by Pistaches are _asynchronous_ and _non-blocking_. Asynchronous programming allows for code to continue executing even if the result of a given call is not available yet. Calls that provide an asynchronous interface are referred to _asynchronous calls_.
 
 An example of such a call is the `send()` function provided by the `ResponseWriter` interface. This function returns the number of bytes written to the socket file descriptor associated to the connection. However, instead of returning directly the value to the caller and thus blocking the caller, it wraps the value into a component called a `Promise`.

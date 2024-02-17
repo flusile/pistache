@@ -3,6 +3,13 @@ id: http-handler
 title: HTTP handler
 ---
 
+<!--
+SPDX-FileCopyrightText: 2016 Mathieu Stefani
+SPDX-FileCopyrightText: 2021 Andrea Pappacoda
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 Requests that are received by Pistache are handled by a special class called `Http::Handler`. This class declares a bunch of virtual methods that can be overriden to handle special events that occur on the socket and/or connection.
 
 The `onRequest()` function must be overriden. This function is called whenever Pistache received data and correctly parsed it as an HTTP request.
@@ -102,7 +109,7 @@ stream << "PO" << "NG" << ends;
 In addition to text content serving, Pistache provides a way to serve static files through the `Http::serveFile` function:
 
 ```cpp
-if (request.resource() == "/doc" && request.method == Http::Method::Get) {
+if (request.resource() == "/doc" && request.method() == Http::Method::Get) {
     Http::serveFile(response, "README.md");
 }
 ```
@@ -115,7 +122,7 @@ if (request.resource() == "/doc" && request.method == Http::Method::Get) {
 
 ## Controlling timeout
 
-Sometimes, you might require to timeout after a certain amount of time. For example, if you are designing an HTTP API with soft real-time constraints, you will have a time constraint to send a response back to the client. That is why Pistache provides the ability to control the timeout on a per-request basis. To arm a timeout on a response, you can use the `timeoufterAfter()` member function directly on the `ResponseWriter` object:
+Sometimes, you might require to timeout after a certain amount of time. For example, if you are designing an HTTP API with soft real-time constraints, you will have a time constraint to send a response back to the client. That is why Pistache provides the ability to control the timeout on a per-request basis. To arm a timeout on a response, you can use the `timeoutAfter()` member function directly on the `ResponseWriter` object:
 
 ```cpp
 response.timeoutAfter(std::chrono::milliseconds(500));

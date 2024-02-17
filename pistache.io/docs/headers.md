@@ -2,6 +2,13 @@
 title: Headers
 ---
 
+<!--
+SPDX-FileCopyrightText: 2016 Mathieu Stefani
+SPDX-FileCopyrightText: 2021 Andrea Pappacoda
+
+SPDX-License-Identifier: Apache-2.0
+-->
+
 ## Overview
 
 Inspired by the [Rust](https://www.rust-lang.org) eco-system and [Hyper](https://hyper.rs), HTTP headers are represented as _type-safe_ plain objects. Instead of representing headers as a pair of `(key: string, value: value)`, the choice has been made to represent them as plain objects. This greatly reduces the risk of typo errors that can not catched by the compiler with plain old strings.

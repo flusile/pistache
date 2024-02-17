@@ -1,6 +1,12 @@
+<!--
+SPDX-FileCopyrightText: 2021 Andrea Pappacoda
+
+SPDX-License-Identifier: CC0-1.0
+-->
+
 # Website
 
-This website is built using [Docusaurus 2](https://v2.docusaurus.io/), a modern static website generator.
+This website is built using [Docusaurus 2](https://docusaurus.io/), a modern static website generator.
 
 ## Installation
 
@@ -14,7 +20,7 @@ yarn install
 yarn start
 ```
 
-This command starts a local development server and open up a browser window. Most changes are reflected live without having to restart the server.
+This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
 
 ## Build
 

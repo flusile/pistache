@@ -1,8 +1,12 @@
+// SPDX-FileCopyrightText: 2021 Andrea Pappacoda
+//
+// SPDX-License-Identifier: Apache-2.0
+
 module.exports = {
   title: 'Pistache',
   tagline: 'An elegant C++ REST framework.',
-  url: 'https://pistache.io',
-  baseUrl: '/',
+  url: 'https://pistacheio.github.io',
+  baseUrl: '/pistache/',
   onBrokenLinks: 'throw',
   onBrokenMarkdownLinks: 'warn',
   favicon: 'img/logo.png',
@@ -54,8 +58,8 @@ module.exports = {
               href: 'https://stackoverflow.com/questions/tagged/pistache',
             },
             {
-              label: '#pistache on Freenode',
-              href: 'irc://chat.freenode.net',
+              label: '#pistache on Libera.Chat',
+              href: 'https://web.libera.chat/#pistache',
             },
           ],
         },
@@ -78,7 +82,6 @@ module.exports = {
       {
         docs: {
           sidebarPath: require.resolve('./sidebars.js'),
-          // Please change this to your repo.
           editUrl:
             'https://github.com/pistacheio/pistache/edit/master/pistache.io/',
         },

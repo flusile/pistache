@@ -1,56 +1,89 @@
+# SPDX-FileCopyrightText: 2021 Andrea Pappacoda
+#
+# SPDX-License-Identifier: Apache-2.0
+
 curl_dep = dependency('libcurl')
 gtest_main_dep = dependency('gtest', main: true, fallback: ['gtest', 'gtest_main_dep'])
+gmock_dep = dependency('gmock', version: '>=1.11.0', fallback: ['gtest', 'gmock_dep'])
+cpp_httplib_dep = dependency('cpp-httplib', fallback: ['cpp-httplib', 'cpp_httplib_dep'])
+brotli_dep = dependency('', required: false)
+
+subdir('helpers')
 
 pistache_test_files = [
-	'mime_test',
-	'headers_test',
 	'async_test',
-	'typeid_test',
-	'router_test',
 	'cookie_test',
 	'cookie_test_2',
 	'cookie_test_3',
-	'view_test',
-	'http_parsing_test',
-	'http_uri_test',
-	'http_server_test',
+	'headers_test',
 	'http_client_test',
+	'http_parsing_test',
+	'http_server_test',
+	'http_uri_test',
 	'listener_test',
-	'request_size_test',
-	'streaming_test',
-	'rest_server_test',
-	'string_view_test',
-	'mailbox_test',
-	'stream_test',
-	'reactor_test',
-	'threadname_test',
-	'optional_test',
 	'log_api_test',
-	'string_logger_test'
+	'mailbox_test',
+	'mime_test',
+	'net_test',
+	'reactor_test',
+	'request_size_test',
+	'rest_server_test',
+	'rest_swagger_server_test',
+	'router_test',
+	'stream_test',
+	'streaming_test',
+	'string_logger_test',
+	'threadname_test',
+	'typeid_test',
+	'view_test',
+	'helpers_test',
 ]
-if get_option('PISTACHE_ENABLE_NETWORK_TESTS')
-	pistache_test_files += 'net_test'
-endif
+
+network_tests = ['net_test']
+
+flaky_tests = []
+
 if get_option('PISTACHE_USE_SSL')
-	pistache_test_files += 'https_server_test'
+	pistache_test_files += [
+		'https_server_test',
+		'listener_tls_test'
+	]
 	subdir('certs')
 endif
 
+# If built with Brotli compression support enable decoder for unit testing...
+if get_option('PISTACHE_USE_CONTENT_ENCODING_BROTLI')
+    brotli_dep = dependency('libbrotlidec')
+endif
+
 foreach test_name : pistache_test_files
+	suite = {}
+	if test_name in network_tests
+		suite = {'suite': 'network'}
+	elif test_name in flaky_tests
+		suite = {'suite': 'flaky'}
+	endif
+
 	test(
 		test_name,
 		executable(
 			'run_'+test_name,
 			test_name+'.cc',
 			dependencies: [
-				pistache_shared_dep,
+				pistache_dep,
+				tests_helpers_dep,
+				deps_libpistache,
 				gtest_main_dep,
-				curl_dep
+				gmock_dep,
+				curl_dep,
+				cpp_httplib_dep,
+				brotli_dep
 			]
 		),
-		timeout: 60,
+		timeout: 600,
 		workdir: meson.current_build_dir(),
-		is_parallel: false
+		is_parallel: false,
+		kwargs: suite
 	)
 endforeach
 
@@ -62,7 +95,6 @@ if cppcheck.found()
 		'-DCPPCHECK',
 		'--suppress=*:*tests/*',
 		'--suppress=*:*subprojects/*',
-		'--suppress=noExplicitConstructor:include/pistache/optional.h',
 		'--std=' + get_option('cpp_std')
 	]
 	run_target(
@@ -72,6 +104,4 @@ if cppcheck.found()
 			cppcheck_args
 		]
 	)
-else
-	warning('Can\'t find Cppcheck')
 endif

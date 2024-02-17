@@ -1,3 +1,9 @@
+/*
+ * SPDX-FileCopyrightText: 2021 Andrea Pappacoda
+ *
+ * SPDX-License-Identifier: CC0-1.0
+ */
+
 /* stylelint-disable docusaurus/copyright-header */
 /**
  * Any CSS included here will be global. The classic template
@@ -18,10 +24,14 @@
 }
 
 .docusaurus-highlight-code-line {
-  background-color: rgb(72, 77, 91);
+  background-color: rgba(0, 0, 0, 0.1);
   display: block;
   margin: 0 calc(-1 * var(--ifm-pre-padding));
   padding: 0 var(--ifm-pre-padding);
+}
+
+html[data-theme='dark'] .docusaurus-highlight-code-line {
+  background-color: rgba(0, 0, 0, 0.3);
 }
 
 .header-github-link:hover {

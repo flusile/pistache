@@ -1,6 +1,10 @@
-configure_file(input: 'version.h.in', output: 'version.h', configuration: version_data_conf, install: get_option('PISTACHE_INSTALL'), install_dir: prefix/get_option('includedir')/'pistache')
+# SPDX-FileCopyrightText: 2021 Andrea Pappacoda
+#
+# SPDX-License-Identifier: Apache-2.0
 
-install_headers([
+configure_file(input: 'version.h.in', output: 'version.h', configuration: version_conf, install: get_option('PISTACHE_INSTALL'), install_dir: get_option('includedir')/'pistache')
+
+install_headers(
 	'async.h',
 	'base64.h',
 	'client.h',
@@ -20,8 +24,8 @@ install_headers([
 	'log.h',
 	'mailbox.h',
 	'mime.h',
+	'meta.h',
 	'net.h',
-	'optional.h',
 	'os.h',
 	'peer.h',
 	'prototype.h',
@@ -31,14 +35,15 @@ install_headers([
 	'ssl_wrappers.h',
 	'stream.h',
 	'string_logger.h',
-	'string_view.h',
 	'tcp.h',
 	'timer_pool.h',
 	'transport.h',
 	'type_checkers.h',
 	'typeid.h',
 	'utils.h',
-	'view.h'
-], subdir: 'pistache')
+	'view.h',
+	subdir: 'pistache')
 
-install_subdir('thirdparty', install_dir: prefix/get_option('includedir')/'pistache')
+if get_option('PISTACHE_USE_RAPIDJSON')
+    install_subdir('serializer', install_dir: get_option('includedir')/'pistache')
+endif
