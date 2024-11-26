@@ -1,4 +1,4 @@
-/*
+ /*
  * SPDX-FileCopyrightText: 2015 Mathieu Stefani
  *
  * SPDX-License-Identifier: Apache-2.0
@@ -17,10 +17,18 @@
 #include <stdexcept>
 #include <string>
 
-#include <netdb.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <sys/un.h>
+#include <pistache/winornix.h>
+
+#include PIST_QUOTE(PST_NETDB_HDR)
+
+// netinet/in.h defines in_port_t, in_addr_t, in_addr, sockaddr_in,
+// sockaddr_in6, IPPROTO_IP, INADDR_ANY, etc.
+#include PIST_QUOTE(PST_NETINET_IN_HDR)
+
+#include PIST_QUOTE(PST_SOCKET_HDR)
+#include PIST_QUOTE(PST_SYS_UN_HDR)
+
+#include PIST_QUOTE(PIST_SOCKFNS_HDR)
 
 #ifndef _KERNEL_FASTOPEN
 #define _KERNEL_FASTOPEN
@@ -49,6 +57,7 @@ namespace Pistache
         {
             if (addrs)
             {
+                PST_SOCK_STARTUP_CHECK;
                 ::freeaddrinfo(addrs);
             }
         }
@@ -58,6 +67,8 @@ namespace Pistache
         int invoke(const char* node, const char* service,
                    const struct addrinfo* hints)
         {
+            PST_SOCK_STARTUP_CHECK;
+            
             if (addrs)
             {
                 ::freeaddrinfo(addrs);
@@ -87,7 +98,8 @@ namespace Pistache
 
         static constexpr uint16_t min()
         {
-            return std::numeric_limits<uint16_t>::min();
+            // return std::numeric_limits<uint16_t>::min();
+            return std::numeric_limits<unsigned short>::min();
         }
         static constexpr uint16_t max()
         {
@@ -116,7 +128,7 @@ namespace Pistache
         int getFamily() const;
         uint16_t getPort() const;
         std::string toString() const;
-        void toNetwork(in_addr_t*) const;
+        void toNetwork(PST_IN_ADDR_T*) const;
         void toNetwork(struct in6_addr*) const;
         // Returns 'true' if the system has IPV6 support, false if not.
         static bool supported();
@@ -153,7 +165,8 @@ namespace Pistache
     public:
         Address();
         Address(std::string host, Port port);
-
+        Address(std::string host); // retained for backwards compatibility
+        
         /*
          * Constructors for creating addresses from strings.  They're
          * typically used to create IP-based addresses, but can also be used
@@ -168,8 +181,11 @@ namespace Pistache
          *  - addr[0] == '\0'
          *  - addr contains a '/' character
          */
-        explicit Address(std::string addr);
+
         explicit Address(const char* addr);
+
+        static Address makeWithDefaultPort(std::string addr,
+                                           Port default_port = 0);
 
         Address(IP ip, Port port);
 
@@ -208,7 +224,11 @@ namespace Pistache
         friend std::ostream& operator<<(std::ostream& os, const Address& address);
 
     private:
+        // For init, default_port of zero makes the default port 80, though the
+        // default can be overridden by addr
+        void init(const std::string& addr, Port default_port);
         void init(const std::string& addr);
+
         static bool isUnixDomain(const std::string& addr);
         IP ip_;
         Port port_;
@@ -219,10 +239,14 @@ namespace Pistache
 
     namespace helpers
     {
-        inline Address httpAddr(const std::string_view& view)
+        inline Address httpAddr(const std::string_view& view,
+                                Port default_port)
         {
-            return Address(std::string(view));
+            return Address::makeWithDefaultPort(std::string(view),
+                                                default_port);
         }
+
+        Address httpAddr(const std::string_view& view);
     } // namespace helpers
 
     class Error : public std::runtime_error

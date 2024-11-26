@@ -22,7 +22,12 @@
 #include <type_traits>
 #include <vector>
 
+#include <pistache/eventmeth.h>
+
+#ifndef _USE_LIBEVENT_LIKE_APPLE
+// Note: sys/timerfd.h is linux-only (and certainly POSIX only)
 #include <sys/timerfd.h>
+#endif
 
 #include <pistache/async.h>
 #include <pistache/cookie.h>
@@ -41,6 +46,10 @@
 
 #ifdef PISTACHE_USE_CONTENT_ENCODING_DEFLATE
 #include <zlib.h>
+#endif
+
+#ifdef PISTACHE_USE_CONTENT_ENCODING_ZSTD
+#include <zstd.h>
 #endif
 
 namespace Pistache
@@ -269,18 +278,22 @@ namespace Pistache
                 , peer(std::move(other.peer))
             {
                 // cppcheck-suppress useInitializationList
-                other.timerFd = -1;
+                other.timerFd = PS_FD_EMPTY;
+                // For libevent, don't need to free, passed to this->timerFd
             }
 
             Timeout& operator=(Timeout&& other)
             {
-                handler       = other.handler;
-                transport     = other.transport;
-                version       = other.version;
-                armed         = other.armed;
-                timerFd       = other.timerFd;
-                other.timerFd = -1;
-                peer          = std::move(other.peer);
+                handler   = other.handler;
+                transport = other.transport;
+                version   = other.version;
+                armed     = other.armed;
+                timerFd   = other.timerFd;
+
+                other.timerFd = PS_FD_EMPTY;
+                // For libevent, don't need to free, passed to this->timerFd
+
+                peer = std::move(other.peer);
                 return *this;
             }
 
@@ -290,7 +303,21 @@ namespace Pistache
             void arm(Duration duration)
             {
                 Async::Promise<uint64_t> p([=](Async::Deferred<uint64_t> deferred) {
-                    timerFd = TRY_RET(timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK));
+#ifdef _USE_LIBEVENT
+                    std::shared_ptr<EventMethEpollEquiv>
+                        event_meth_epoll_equiv(
+                            transport->getEventMethEpollEquiv());
+                    if (!event_meth_epoll_equiv)
+                        throw std::runtime_error(
+                            "event_meth_epoll_equiv null");
+
+                    timerFd = TRY_NULL_RET(EventMethFns::em_timer_new(
+                        PST_CLOCK_MONOTONIC,
+                        F_SETFDL_NOTHING, PST_O_NONBLOCK,
+                        event_meth_epoll_equiv.get()));
+#else
+                    timerFd = TRY_RET(timerfd_create(PST_CLOCK_MONOTONIC, TFD_NONBLOCK));
+#endif
                     transport->armTimer(timerFd, duration, std::move(deferred));
                 });
 
@@ -298,7 +325,8 @@ namespace Pistache
                     [=](uint64_t numWakeup) {
                         this->armed = false;
                         this->onTimeout(numWakeup);
-                        close(timerFd);
+                        CLOSE_FD(timerFd);
+                        timerFd = PS_FD_EMPTY;
                     },
                     [=](std::exception_ptr exc) { std::rethrow_exception(exc); });
 
@@ -407,7 +435,7 @@ namespace Pistache
         public:
             static constexpr size_t DefaultStreamSize = 512;
 
-            friend Async::Promise<ssize_t>
+            friend Async::Promise<PST_SSIZE_T>
             serveFile(ResponseWriter&, const std::string&, const Mime::MediaType&);
 
             friend class Handler;
@@ -436,22 +464,22 @@ namespace Pistache
              * - movedPermantly -> 301
              * - moved() -> 302
              */
-            Async::Promise<ssize_t>
+            Async::Promise<PST_SSIZE_T>
             sendMethodNotAllowed(const std::vector<Http::Method>& supportedMethods);
 
-            Async::Promise<ssize_t> send(Code code, const std::string& body = "",
-                                         const Mime::MediaType& mime = Mime::MediaType());
+            Async::Promise<PST_SSIZE_T> send(Code code, const std::string& body = "",
+                                             const Mime::MediaType& mime = Mime::MediaType());
 
             template <size_t N>
-            Async::Promise<ssize_t>
+            Async::Promise<PST_SSIZE_T>
             send(Code code, const char (&arr)[N],
                  const Mime::MediaType& mime = Mime::MediaType())
             {
                 return sendImpl(code, arr, N - 1, mime);
             }
 
-            Async::Promise<ssize_t> send(Code code, const char* data, const size_t size,
-                                         const Mime::MediaType& mime = Mime::MediaType());
+            Async::Promise<PST_SSIZE_T> send(Code code, const char* data, const size_t size,
+                                             const Mime::MediaType& mime = Mime::MediaType());
 
             ResponseStream stream(Code code, size_t streamSize = DefaultStreamSize);
 
@@ -473,7 +501,7 @@ namespace Pistache
 
             // Returns total count of HTTP bytes (headers, cookies, body) written when
             // sending the response.  Result valid AFTER ResponseWriter.send() is called.
-            ssize_t getResponseSize() const { return sent_bytes_; }
+            PST_SSIZE_T getResponseSize() const { return sent_bytes_; }
 
             // Returns HTTP result code that was sent with the response.
             Code getResponseCode() const { return response_.code(); }
@@ -506,6 +534,15 @@ namespace Pistache
                 contentEncodingBrotliLevel_ = _contentEncodingBrotliLevel;
             }
 #endif
+#ifdef PISTACHE_USE_CONTENT_ENCODING_ZSTD
+            // Set the compression level for zstandard algorithm. Defaults to
+            //  ZSTD_CLEVEL_DEFAULT = 3...
+            void setCompressionZstdLevel(const int contentEncodingZstdLevel)
+            {
+                contentEncodingZstdLevel_ = contentEncodingZstdLevel;
+            }
+
+#endif
 
 #ifdef PISTACHE_USE_CONTENT_ENCODING_DEFLATE
             // Set the compression level for deflate algorithm. Defaults to
@@ -519,18 +556,18 @@ namespace Pistache
         private:
             ResponseWriter(const ResponseWriter& other);
 
-            Async::Promise<ssize_t> sendImpl(Code code, const char* data,
-                                             const size_t size,
-                                             const Mime::MediaType& mime);
+            Async::Promise<PST_SSIZE_T> sendImpl(Code code, const char* data,
+                                                 const size_t size,
+                                                 const Mime::MediaType& mime);
 
-            Async::Promise<ssize_t> putOnWire(const char* data, size_t len);
+            Async::Promise<PST_SSIZE_T> putOnWire(const char* data, size_t len);
 
             Response response_;
             std::weak_ptr<Tcp::Peer> peer_;
             DynamicStreamBuf buf_;
             Tcp::Transport* transport_ = nullptr;
             Timeout timeout_;
-            ssize_t sent_bytes_ = 0;
+            PST_SSIZE_T sent_bytes_ = 0;
 
             Http::Header::Encoding contentEncoding_ = Http::Header::Encoding::Identity;
 
@@ -538,12 +575,18 @@ namespace Pistache
             int contentEncodingBrotliLevel_ = BROTLI_DEFAULT_QUALITY;
 #endif
 
+#ifdef PISTACHE_USE_CONTENT_ENCODING_ZSTD
+
+            // Value 0 means default, which is controlled by ZSTD_CLEVEL_DEFAULT = 3
+            int contentEncodingZstdLevel_ = 0;
+#endif
+
 #ifdef PISTACHE_USE_CONTENT_ENCODING_DEFLATE
             int contentEncodingDeflateLevel_ = Z_DEFAULT_COMPRESSION;
 #endif
         };
 
-        Async::Promise<ssize_t>
+        Async::Promise<PST_SSIZE_T>
         serveFile(ResponseWriter& writer, const std::string& fileName,
                   const Mime::MediaType& contentType = Mime::MediaType());
 
@@ -564,7 +607,7 @@ namespace Pistache
                 virtual StepId id() const                 = 0;
                 virtual State apply(StreamCursor& cursor) = 0;
 
-                static void raise(const char* msg, Code code = Code::Bad_Request);
+                [[noreturn]] static void raise(const char* msg, Code code = Code::Bad_Request);
 
             protected:
                 Message* message;
@@ -647,8 +690,8 @@ namespace Pistache
                 private:
                     Message* message;
                     size_t bytesRead;
-                    ssize_t size;
-                    ssize_t alreadyAppendedChunkBytes;
+                    PST_SSIZE_T size;
+                    PST_SSIZE_T alreadyAppendedChunkBytes;
                 };
 
                 State parseContentLength(StreamCursor& cursor,

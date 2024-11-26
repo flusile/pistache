@@ -45,11 +45,17 @@ void dumpData(const Rest::Request& /*req*/, Http::ResponseWriter response)
 
     for (size_t j = 0; j < N_WORKERS; ++j)
     {
-        workers.emplace_back([&jobCounter, &cv, &jobLock, &jobs]() {
+        // the ["="...] tells the compiler to capture-by-copy (i.e. by value)
+        // by default, and then specifies the exceptions (jobCounter etc.) that
+        // are to be captured by reference. Even though JOB_LIMIT is a
+        // constexpr, MSVC 2019 requires that the default capture method be
+        // provided when implicitly passing JOB_LIMIT to lambda function by
+        // copy/value
+        workers.emplace_back([=, &jobCounter, &cv, &jobLock, &jobs]() {
             while (jobCounter < JOB_LIMIT)
             {
                 std::unique_lock<Lock> l(jobLock);
-                cv.wait(l, [&jobCounter, &jobs] {
+                cv.wait(l, [=, &jobCounter, &jobs] {
                     return !jobs.empty() || !(jobCounter < JOB_LIMIT);
                 });
                 if (!jobs.empty())
@@ -72,8 +78,8 @@ void dumpData(const Rest::Request& /*req*/, Http::ResponseWriter response)
     for (size_t s = 0; s < SET_REPEATS; ++s)
     {
         for (size_t i = 0; i < N_LETTERS; ++i)
-        {
-            auto job = [&stream, &responseLock, i]() -> void {
+        {   // Re: '=', see prior comment about capture of const/constexpr
+            auto job = [=, &stream, &responseLock]() -> void {
                 constexpr size_t nchunks    = 10;
                 constexpr size_t chunk_size = LETTER_REPEATS / nchunks;
                 const std::string payload(chunk_size, static_cast<char>(letter + i));
@@ -127,7 +133,7 @@ namespace
 // from
 // https://stackoverflow.com/questions/6624667/can-i-use-libcurls-curlopt-writefunction-with-a-c11-lambda-expression#14720398
 auto curl_callback = +[](void* ptr, size_t size, size_t nmemb,
-                        void* userdata) -> size_t {
+                         void* userdata) -> size_t {
     auto* chunks = static_cast<Chunks*>(userdata);
     chunks->emplace_back(static_cast<char*>(ptr), size * nmemb);
     return size * nmemb;
@@ -139,7 +145,7 @@ public:
     StreamingTests()
         : address(Pistache::Ipv4::any(), Pistache::Port(0))
         , endpoint(address)
-        , curl(curl_easy_init())
+        , curl(curl_easy_init()) // calls curl_global_init automatically
     {
     }
 
@@ -183,6 +189,10 @@ public:
 
 TEST_F(StreamingTests, FromDescription)
 {
+    PS_TIMEDBG_START;
+
+    { // encapsulate
+
     Rest::Description desc("Rest Description Test", "v1");
     Rest::Router router;
 
@@ -199,6 +209,9 @@ TEST_F(StreamingTests, FromDescription)
 
     ASSERT_EQ(res, CURLE_OK);
     ASSERT_EQ(chunksToString(chunks).size(), SET_REPEATS * LETTER_REPEATS * N_LETTERS);
+
+    } // end encapsulate
+
 }
 
 class HelloHandler : public Http::Handler
@@ -212,6 +225,8 @@ public:
 
     void onRequest(const Http::Request&, Http::ResponseWriter response) override
     {
+        PS_TIMEDBG_START_THIS;
+
         std::unique_lock<std::mutex> lk(ctx_.m);
         auto stream = response.stream(Http::Code::Ok);
 
@@ -239,6 +254,10 @@ private:
 
 TEST_F(StreamingTests, ChunkedStream)
 {
+    PS_TIMEDBG_START;
+
+    { // encapsulate
+
     SyncContext ctx;
 
     // force unbuffered
@@ -264,14 +283,20 @@ TEST_F(StreamingTests, ChunkedStream)
     EXPECT_EQ(chunks[0], "Hello ");
     EXPECT_EQ(chunks[1], "world");
     EXPECT_EQ(chunks[2], "!");
+
+    } // end encapsulate
+
 }
 
-class ClientDisconnectHandler : public Http::Handler {
+class ClientDisconnectHandler : public Http::Handler
+{
 public:
     HTTP_PROTOTYPE(ClientDisconnectHandler)
 
     void onRequest(const Http::Request&, Http::ResponseWriter response) override
     {
+        PS_TIMEDBG_START_THIS;
+
         auto stream = response.stream(Http::Code::Ok);
 
         stream << "Hello ";
@@ -289,14 +314,38 @@ public:
     }
 };
 
+// MUST be LAST test, since it calls curl_global_cleanup
 TEST(StreamingTest, ClientDisconnect)
 {
+    PS_TIMEDBG_START;
+
+#ifdef _USE_LIBEVENT_LIKE_APPLE
+#ifdef DEBUG
+    const int em_event_count_before = EventMethFns::getEmEventCount();
+#endif
+#endif
+
+    DBG_LOG_ALL_EMEVENTS;
+
+    { // encapsulate
+
     Http::Endpoint endpoint(Address(IP::loopback(), Port(0)));
     endpoint.init(Http::Endpoint::options().flags(Tcp::Options::ReuseAddr));
     endpoint.setHandler(Http::make_handler<ClientDisconnectHandler>());
     endpoint.serveThreaded();
 
     const std::string url = "http://localhost:" + std::to_string(endpoint.getPort());
+
+        // If we don't encapsulate "thread" in this fashion (i.e. if we have
+        // "thread" remain in scope until the end of the function), then the
+        // github test runners will believe that this TEST has a memory leak
+        // when libevent is in use, and so fail. Specifically, the gtest/github
+        // test makes it appear that we have leaked an Fd/EmEvent.
+        //
+        // With this encapsulation in place, there is no leak detected. It is
+        // not clear to me why "thread" going out of scope should allow the Fd
+        // to be freed, but equally it seems OK that the thread should have to
+        // be out of scope before the Fd resource is released.
 
     std::thread thread([&url]() {
         CURL* curl = curl_easy_init();
@@ -307,15 +356,17 @@ TEST(StreamingTest, ClientDisconnect)
         int still_running = 1;
         curl_multi_add_handle(curlm, curl);
 
-        // This sequence of _perform, _wait, _perform starts a requests (all 3 are needed)
+        // This sequence of _perform, _wait, _perform starts a requests
+        // (all 3 are needed)
         curl_multi_perform(curlm, &still_running);
         if (still_running)
         {
-            curl_multi_wait(curlm, NULL, 0, 1000, NULL);
+            curl_multi_wait(curlm, nullptr, 0, 1000, nullptr);
             curl_multi_perform(curlm, &still_running);
         }
 
-        // Hard-close the client request & socket before server is done responding
+        // Hard-close the client request & socket before server is done
+        // responding
         curl_multi_cleanup(curlm);
         curl_easy_cleanup(curl);
     });
@@ -326,4 +377,20 @@ TEST(StreamingTest, ClientDisconnect)
     }
 
     // Don't care about response content, this test will fail if SIGPIPE is raised
+
+    endpoint.shutdown();
+    curl_global_cleanup();
+    } // end encapsulate
+
+    DBG_LOG_ALL_EMEVENTS;
+
+#ifdef _USE_LIBEVENT_LIKE_APPLE
+#ifdef DEBUG
+    const int em_event_count_after = EventMethFns::getEmEventCount();
+
+    PS_LOG_DEBUG_ARGS("em_event_count_before %d, em_event_count_after %d",
+                      em_event_count_before, em_event_count_after);
+    ASSERT_EQ(em_event_count_before, em_event_count_after);
+#endif
+#endif
 }

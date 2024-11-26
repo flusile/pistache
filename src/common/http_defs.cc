@@ -24,6 +24,8 @@
 #endif
 #include <pistache/http_defs.h>
 
+#include PIST_QUOTE(PST_CLOCK_GETTIME_HDR)
+
 namespace Pistache::Http
 {
 
@@ -128,6 +130,19 @@ namespace Pistache::Http
         case Type::RFC1123:
             date::to_stream(os, "%a, %d %b %Y %T %Z", date_);
             break;
+        case Type::RFC1123GMT: {
+            // Requires GMT so we must use std::gmtime to convert to GMT.  We
+            // cannot use "%Z" since may refer to the local time zone name,
+            // not the name associated with the std::tm object (since std::tm
+            // isn't guaranteed to have a tm_zone field - it only does on
+            // POSIX.1-2024 systems; this issue seen on NetBSD 10.0).
+            time_t t = std::chrono::system_clock::to_time_t(date_);
+
+            struct tm gmtm;
+            PST_GMTIME_R(&t, &gmtm);
+            os << std::put_time(&gmtm, "%a, %d %b %Y %T GMT");
+        }
+        break;
         case Type::RFC850:
             date::to_stream(os, "%a, %d-%b-%y %T %Z", date_);
             break;

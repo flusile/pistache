@@ -68,6 +68,7 @@ namespace Pistache::Http::Header
                           Br,
                           Compress,
                           Deflate,
+                          Zstd,
                           Identity,
                           Chunked,
                           Unknown };
@@ -172,6 +173,14 @@ namespace Pistache::Http::Header
 
         Accept()
             : mediaRange_()
+        { }
+
+        explicit Accept(const std::vector<Mime::MediaType>& mediaRange)
+            : mediaRange_(mediaRange)
+        { }
+
+        explicit Accept(std::initializer_list<Mime::MediaType> mediaRange)
+            : mediaRange_(mediaRange)
         { }
 
         void parseRaw(const char* str, size_t len) override;
@@ -586,6 +595,28 @@ namespace Pistache::Http::Header
     private:
         std::string uriHost_;
         Port port_;
+    };
+
+    class LastModified : public Header
+    {
+    public:
+        NAME("Last-Modified");
+
+        LastModified()
+            : fullDate_()
+        { }
+
+        explicit LastModified(const FullDate& fullDate)
+            : fullDate_(fullDate)
+        { }
+
+        void parse(const std::string& data) override;
+        void write(std::ostream& os) const override;
+
+        FullDate fullDate() const { return fullDate_; }
+
+    private:
+        FullDate fullDate_;
     };
 
     class Location : public Header
